@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["uid", "email"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial income or expense transaction",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string", "maxLength": 32 },
+        "paymentMethod": { "type": "string", "maxLength": 64 },
+        "receiptNumber": { "type": "string", "maxLength": 64 },
+        "note": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "type", "amount", "category", "date"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Custom transaction category",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "icon": { "type": "string", "maxLength": 64 },
+        "color": { "type": "string", "maxLength": 32 },
+        "budget": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "name", "type"]
+    },
+    "Bill": {
+      "title": "Bill",
+      "description": "Recurring or scheduled bill with reminder notification",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 128 },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "maxLength": 64 },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "repeatFrequency": { "type": "string", "enum": ["monthly", "weekly", "yearly", "once"] },
+        "status": { "type": "string", "enum": ["unpaid", "paid", "overdue"] },
+        "reminderDaysBefore": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "title", "amount", "dueDate", "status"]
+    },
+    "Receipt": {
+      "title": "Receipt",
+      "description": "Warehouse invoice receipt for Ayam Anugerah",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "receiptNumber": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string", "maxLength": 32 },
+        "customerName": { "type": "string", "maxLength": 128 },
+        "customerCode": { "type": "string", "maxLength": 32 },
+        "noteBox": { "type": "string", "maxLength": 256 },
+        "items": { "type": "array" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["BELUM LUNAS", "LUNAS"] },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "customerName", "totalAmount", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User financial transactions"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Custom categories for transactions"
+    },
+    "/bills/{billId}": {
+      "schema": "Bill",
+      "description": "Monthly and upcoming bills with due dates"
+    },
+    "/receipts/{receiptId}": {
+      "schema": "Receipt",
+      "description": "Ayam Anugerah warehouse sales receipts"
+    }
+  }
+}

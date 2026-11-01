@@ -1,0 +1,6 @@
+{
+  "name": "Ayam Anugerah - Tagihan, Arus Kas & Analisa AI",
+  "description": "Aplikasi tagihan dan pembayaran serta arus kas Ayam Anugerah dengan table input Excel interaktif, pembaca & penganalisa AI Gemini, cetak surat jalan/struk fisik, dan pengingat tempo WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
