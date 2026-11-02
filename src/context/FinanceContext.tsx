@@ -876,8 +876,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Receipts Operations (Ayam Anugerah Invoices)
   const addReceipt = async (data: AyamAnugrahReceipt): Promise<string> => {
     setIsSyncing(true);
+    const localId = data.id || `rcp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const receiptToSave = cleanFirestoreData({
       ...data,
+      id: localId,
+      docId: localId,
+      firestoreDocId: localId,
+      originalId: localId,
       noteBox: data.noteBox ?? '',
       customerCode: data.customerCode ?? '',
       paymentType: data.paymentType ?? 'kredit',
@@ -893,38 +898,71 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
 
     localStorage.removeItem('ayamanugrah_receipts_cleared');
+    localStorage.setItem('ayamanugrah_receipts_initialized', 'true');
+
+    // 1. Immediately update React state & LocalStorage for instant UI appearance
+    setReceipts((prev) => {
+      const updated = [receiptToSave, ...prev.filter((r) => r.id !== localId)];
+      try {
+        localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('LocalStorage save error:', e);
+      }
+      return updated;
+    });
+
     if (isCloudActive) {
       try {
         const docRef = await addDoc(collection(db, 'receipts'), receiptToSave);
+        // Link docRef.id into active receipt
+        setReceipts((prev) =>
+          prev.map((r) =>
+            r.id === localId
+              ? { ...r, id: docRef.id, docId: docRef.id, firestoreDocId: docRef.id }
+              : r
+          )
+        );
         setIsSyncing(false);
         return docRef.id;
       } catch (error) {
         setIsSyncing(false);
-        handleFirestoreError(error, OperationType.CREATE, 'receipts');
-        return '';
+        console.warn('Firestore addDoc fallback kept locally:', error);
+        return localId;
       }
     } else {
-      setReceipts((prev) => [receiptToSave, ...prev]);
       setIsSyncing(false);
-      return receiptToSave.id;
+      return localId;
     }
   };
 
   const updateReceipt = async (id: string, data: Partial<AyamAnugrahReceipt>): Promise<void> => {
     setIsSyncing(true);
     const cleanedData = cleanFirestoreData(data);
+
+    // Optimistically update React state and LocalStorage immediately
+    setReceipts((prev) => {
+      const updated = prev.map((r) =>
+        r.id === id || (r as any).docId === id || (r as any).firestoreDocId === id
+          ? { ...r, ...cleanedData }
+          : r
+      );
+      try {
+        localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.warn('LocalStorage update receipt error:', e);
+      }
+      return updated;
+    });
+
     if (isCloudActive) {
       try {
         await updateDoc(doc(db, 'receipts', id), cleanedData);
         setIsSyncing(false);
       } catch (error) {
         setIsSyncing(false);
-        handleFirestoreError(error, OperationType.UPDATE, `receipts/${id}`);
+        console.warn('Firestore updateDoc warning:', error);
       }
     } else {
-      setReceipts((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...cleanedData } : r))
-      );
       setIsSyncing(false);
     }
   };

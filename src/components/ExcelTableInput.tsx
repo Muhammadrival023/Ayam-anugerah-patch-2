@@ -368,7 +368,7 @@ export const ExcelTableInput: React.FC<ExcelTableInputProps> = ({ onSuccessSave 
           date: row.date,
           customerName: row.customerName,
           customerCode: `#${row.customerName.slice(0, 3).toUpperCase()}`,
-          noteBox: row.notes || undefined,
+          noteBox: row.notes || '',
           items: [
             {
               name: row.productName,
@@ -954,7 +954,13 @@ export const ExcelTableInput: React.FC<ExcelTableInputProps> = ({ onSuccessSave 
                   type="button"
                   onClick={() => {
                     const encoded = encodeURIComponent(generatedReminderMsg);
-                    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+                    const link = document.createElement('a');
+                    link.href = `https://api.whatsapp.com/send?text=${encoded}`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
                   }}
                   className="flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-600/20 active:scale-95"
                 >

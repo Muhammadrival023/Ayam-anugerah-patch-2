@@ -26,6 +26,8 @@ import {
   Square,
   Table,
   Upload,
+  Camera,
+  Sparkles,
 } from 'lucide-react';
 import {
   downloadReceiptAsPng,
@@ -40,6 +42,7 @@ import {
 import { useFinance } from '../context/FinanceContext';
 import { WarehouseGoogleSheetModal } from './WarehouseGoogleSheetModal';
 import { WarehouseImportModal } from './WarehouseImportModal';
+import { ReceiptOcrScannerModal } from './ReceiptOcrScannerModal';
 
 interface AyamReceiptGalleryProps {
   onOpenClearModal: () => void;
@@ -63,6 +66,8 @@ export const AyamReceiptGallery: React.FC<AyamReceiptGalleryProps> = ({ onOpenCl
   const [editingReceipt, setEditingReceipt] = useState<AyamAnugrahReceipt | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
+  const [ocrExtractedBadge, setOcrExtractedBadge] = useState(false);
 
   // Download menu states
   const [activeDownloadMenuId, setActiveDownloadMenuId] = useState<string | null>(null);
@@ -539,12 +544,19 @@ Terima Kasih Atas Kerjasamanya.
 `.trim();
 
     const encoded = encodeURIComponent(text);
-    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+    const link = document.createElement('a');
+    link.href = `https://api.whatsapp.com/send?text=${encoded}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Add / Edit handlers
   const handleOpenAdd = () => {
     setEditingReceipt(null);
+    setOcrExtractedBadge(false);
     setFormDate('01 Nov 2026');
     setFormCustomerName('');
     setFormCustomerCode(`#${String(receipts.length + 1).padStart(2, '0')}`);
@@ -560,6 +572,7 @@ Terima Kasih Atas Kerjasamanya.
 
   const handleOpenEdit = (r: AyamAnugrahReceipt) => {
     setEditingReceipt(r);
+    setOcrExtractedBadge(false);
     setFormDate(r.date);
     setFormCustomerName(r.customerName);
     setFormCustomerCode(r.customerCode || '');
@@ -567,6 +580,38 @@ Terima Kasih Atas Kerjasamanya.
     setFormStatus(r.status);
     setFormItems(r.items);
     setIsNewModalOpen(true);
+  };
+
+  // OCR AI integration handlers
+  const handleApplyOcrToForm = (data: {
+    customerName: string;
+    customerCode: string;
+    date: string;
+    noteBox: string;
+    status: 'BELUM LUNAS' | 'LUNAS';
+    items: AyamReceiptLineItem[];
+    paymentType?: string;
+    dueDate?: string;
+  }) => {
+    setEditingReceipt(null);
+    setFormCustomerName(data.customerName);
+    setFormCustomerCode(data.customerCode || `#${String(receipts.length + 1).padStart(2, '0')}`);
+    setFormDate(data.date || '01 Nov 2026');
+    setFormNoteBox(data.noteBox || '');
+    setFormStatus(data.status);
+    setFormItems(data.items.length > 0 ? data.items : [
+      { name: 'Ayam Gebrus', detailLabel: '', quantity: 50.0, unit: 'kg', price: 25500, total: 1275000 }
+    ]);
+    setOcrExtractedBadge(true);
+    setIsNewModalOpen(true);
+    showToast('Data bon berhasil dimuat ke form struk. Silakan periksa & simpan.');
+  };
+
+  const handleSaveOcrDirectly = async (receipt: AyamAnugrahReceipt) => {
+    await addReceipt(receipt);
+    setSearchTerm('');
+    setStatusFilter('ALL');
+    showToast(`Struk hasil scan "${receipt.customerName}" berhasil disimpan ke sistem!`);
   };
 
   const handleSaveReceipt = async (e: React.FormEvent) => {
@@ -578,36 +623,55 @@ Terima Kasih Atas Kerjasamanya.
 
     const total = formItems.reduce((sum, item) => sum + item.total, 0);
 
-    if (editingReceipt) {
-      await updateReceipt(editingReceipt.id, {
-        date: formDate,
-        customerName: formCustomerName.trim(),
-        customerCode: formCustomerCode.trim(),
-        noteBox: formNoteBox.trim() || '',
-        items: formItems,
-        totalAmount: total,
-        status: formStatus,
-      });
-      showToast(`Struk "${formCustomerName}" berhasil diperbarui.`);
-    } else {
-      const newReceipt: AyamAnugrahReceipt = {
-        id: 'rcp_' + Date.now(),
-        userId: 'guest',
-        receiptNumber: `INV-AA-${receipts.length + 1}`,
-        date: formDate,
-        customerName: formCustomerName.trim(),
-        customerCode: formCustomerCode.trim() || `#${String(receipts.length + 1).padStart(2, '0')}`,
-        noteBox: formNoteBox.trim() || '',
-        items: formItems,
-        totalAmount: total,
-        status: formStatus,
-        createdAt: new Date().toISOString(),
-      };
-      await addReceipt(newReceipt);
-      showToast(`Struk baru "${formCustomerName}" berhasil dibuat.`);
-    }
+    try {
+      if (editingReceipt) {
+        await updateReceipt(editingReceipt.id, {
+          date: formDate,
+          customerName: formCustomerName.trim(),
+          customerCode: formCustomerCode.trim(),
+          noteBox: formNoteBox.trim() || '',
+          items: formItems,
+          totalAmount: total,
+          status: formStatus,
+          remainingDebt: formStatus === 'LUNAS' ? 0 : total,
+          paidAmount: formStatus === 'LUNAS' ? total : 0,
+        });
+        showToast(`Struk "${formCustomerName}" berhasil diperbarui.`);
+      } else {
+        const newReceipt: AyamAnugrahReceipt = {
+          id: 'rcp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+          userId: 'guest',
+          receiptNumber: `INV-AA-${String(receipts.length + 1).padStart(2, '0')}`,
+          date: formDate,
+          time: '00:57:55',
+          customerName: formCustomerName.trim(),
+          customerCode: formCustomerCode.trim() || `#${String(receipts.length + 1).padStart(2, '0')}`,
+          noteBox: formNoteBox.trim() || '',
+          items: formItems,
+          totalAmount: total,
+          status: formStatus,
+          paymentType: 'kredit',
+          dueDate: '09/11/2026',
+          remainingDebt: formStatus === 'LUNAS' ? 0 : total,
+          paidAmount: formStatus === 'LUNAS' ? total : 0,
+          historyDate: '02/11/2026',
+          storeHeaderName: 'aa anugrah',
+          storePhone: '085735144958',
+          storeHandle: '@@ anugrah',
+          createdAt: new Date().toISOString(),
+        };
+        await addReceipt(newReceipt);
+        showToast(`Struk baru "${formCustomerName}" berhasil ditambahkan!`);
+        // Reset filter & search so the new receipt is immediately visible
+        setSearchTerm('');
+        setStatusFilter('ALL');
+      }
 
-    setIsNewModalOpen(false);
+      setIsNewModalOpen(false);
+    } catch (err: any) {
+      console.error(err);
+      showToast('Gagal menyimpan struk: ' + (err.message || 'Terjadi kesalahan'));
+    }
   };
 
   return (
@@ -929,6 +993,20 @@ Terima Kasih Atas Kerjasamanya.
               </div>
             )}
           </div>
+
+          {/* Upload & Scan Bon OCR AI Button */}
+          <button
+            onClick={() => setIsOcrModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs active:scale-95"
+            title="Upload foto struk atau bon pembayaran customer untuk dipindai otomatis dengan OCR AI"
+          >
+            <Camera className="w-3.5 h-3.5 text-amber-200" />
+            <span>Upload & Scan Bon (OCR AI)</span>
+            <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] bg-amber-500/40 border border-amber-300/30 rounded font-extrabold text-amber-100">
+              <Sparkles className="w-2.5 h-2.5" />
+              OCR
+            </span>
+          </button>
 
           <button
             onClick={handleOpenAdd}
@@ -1488,6 +1566,43 @@ Terima Kasih Atas Kerjasamanya.
             </div>
 
             <form onSubmit={handleSaveReceipt} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Quick OCR Scanner Trigger inside the form */}
+              <div className="flex items-center justify-between p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-amber-600 text-white rounded-xl shrink-0">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <span>Punya Foto Bon / Struk?</span>
+                      <span className="px-1.5 py-0.2 bg-amber-200 text-amber-900 rounded text-[9px] font-black">AI OCR</span>
+                    </div>
+                    <div className="text-[10px] text-amber-700">Scan & isi otomatis form ini langsung dari foto struk</div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNewModalOpen(false);
+                    setIsOcrModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all active:scale-95 shrink-0"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Scan Bon</span>
+                </button>
+              </div>
+
+              {ocrExtractedBadge && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-xs text-emerald-800">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Data formulir berhasil diisi otomatis dari hasil scan OCR bon. Anda dapat mengubah data di bawah ini sebelum menyimpan struk.
+                  </span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-700">Tanggal Struk</label>
@@ -1833,6 +1948,7 @@ Terima Kasih Atas Kerjasamanya.
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         receipts={filteredReceipts}
+        onOpenAddReceipt={handleOpenAdd}
       />
 
       {/* Warehouse Excel & CSV Import Modal */}
@@ -1840,6 +1956,14 @@ Terima Kasih Atas Kerjasamanya.
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImportSuccess={handleImportSuccess}
+      />
+
+      {/* Customer Receipt / Bon OCR Scanner Modal */}
+      <ReceiptOcrScannerModal
+        isOpen={isOcrModalOpen}
+        onClose={() => setIsOcrModalOpen(false)}
+        onApplyToReceiptForm={handleApplyOcrToForm}
+        onSaveDirectly={handleSaveOcrDirectly}
       />
     </div>
   );

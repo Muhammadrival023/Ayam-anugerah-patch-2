@@ -16,18 +16,21 @@ import {
   ExternalLink,
   Table,
   CheckCircle,
+  Plus,
 } from 'lucide-react';
 
 interface WarehouseGoogleSheetModalProps {
   isOpen: boolean;
   onClose: () => void;
   receipts: AyamAnugrahReceipt[];
+  onOpenAddReceipt?: () => void;
 }
 
 export const WarehouseGoogleSheetModal: React.FC<WarehouseGoogleSheetModalProps> = ({
   isOpen,
   onClose,
   receipts,
+  onOpenAddReceipt,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -117,6 +120,19 @@ export const WarehouseGoogleSheetModal: React.FC<WarehouseGoogleSheetModalProps>
           </div>
 
           <div className="flex items-center gap-2">
+            {onOpenAddReceipt && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenAddReceipt();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                title="Tambahkan data struk baru ke gudang"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Tambah Struk</span>
+              </button>
+            )}
             <a
               href="https://docs.google.com/spreadsheets/d/1KpYPQkiP8coTO2UovIskkfPBncQiAZLY0a9f9if0uQw/edit?usp=drivesdk"
               target="_blank"
@@ -356,6 +372,20 @@ export const WarehouseGoogleSheetModal: React.FC<WarehouseGoogleSheetModalProps>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-end">
+            {onOpenAddReceipt && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenAddReceipt();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                title="Buka form input struk baru"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Struk</span>
+              </button>
+            )}
+
             <button
               onClick={handleCopyClipboard}
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-xl text-xs font-bold transition-all shadow-2xs"
