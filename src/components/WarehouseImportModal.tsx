@@ -27,7 +27,7 @@ interface WarehouseImportModalProps {
     importedReceipts: AyamAnugrahReceipt[],
     mode: 'replace' | 'append',
     syncToFinance: boolean
-  ) => void;
+  ) => Promise<void> | void;
 }
 
 export const WarehouseImportModal: React.FC<WarehouseImportModalProps> = ({
@@ -37,6 +37,7 @@ export const WarehouseImportModal: React.FC<WarehouseImportModalProps> = ({
 }) => {
   const [file, setFile] = useState<File | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
   const [parseResult, setParseResult] = useState<ParsedWarehouseImportResult | null>(null);
 
@@ -83,11 +84,20 @@ export const WarehouseImportModal: React.FC<WarehouseImportModalProps> = ({
     e.preventDefault();
   };
 
-  const handleConfirmImport = () => {
-    if (!parseResult || parseResult.receipts.length === 0) return;
-    onImportSuccess(parseResult.receipts, importMode, syncToFinance);
-    handleReset();
-    onClose();
+  const handleConfirmImport = async () => {
+    if (!parseResult || parseResult.receipts.length === 0 || isImporting) return;
+    setIsImporting(true);
+    setParseError(null);
+    try {
+      await onImportSuccess(parseResult.receipts, importMode, syncToFinance);
+      handleReset();
+      onClose();
+    } catch (err: any) {
+      console.error('Import error:', err);
+      setParseError(err.message || 'Gagal menyimpan data impor ke sistem.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const handleReset = () => {
@@ -400,10 +410,20 @@ export const WarehouseImportModal: React.FC<WarehouseImportModalProps> = ({
           {parseResult && (
             <button
               onClick={handleConfirmImport}
-              className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-md shadow-emerald-600/25 active:scale-95"
+              disabled={isImporting}
+              className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-xs font-extrabold transition-all shadow-md shadow-emerald-600/25 active:scale-95 disabled:cursor-not-allowed"
             >
-              <CheckCircle className="w-4 h-4" />
-              <span>Konfirmasi & Impor ({parseResult.rows.length} Struk)</span>
+              {isImporting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Menyimpan ({parseResult.rows.length} Struk)...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4" />
+                  <span>Konfirmasi & Impor ({parseResult.rows.length} Struk)</span>
+                </>
+              )}
             </button>
           )}
         </div>

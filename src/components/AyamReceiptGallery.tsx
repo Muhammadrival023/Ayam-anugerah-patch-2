@@ -177,13 +177,19 @@ export const AyamReceiptGallery: React.FC<AyamReceiptGalleryProps> = ({ onOpenCl
     setIsDeleteMenuOpen(false);
   };
 
-  const handleImportSuccess = (
+  const handleImportSuccess = async (
     importedReceipts: AyamAnugrahReceipt[],
     mode: 'replace' | 'append',
     syncToFinance: boolean
   ) => {
-    importReceipts(importedReceipts, mode, syncToFinance);
-    showToast(`Berhasil mengimpor ${importedReceipts.length} struk dari file Excel.`);
+    try {
+      const count = await importReceipts(importedReceipts, mode, syncToFinance);
+      showToast(`Berhasil mengimpor ${count || importedReceipts.length} struk dari file Excel!`);
+    } catch (err: any) {
+      console.error('Import error in gallery:', err);
+      showToast('Gagal memproses impor struk. Silakan coba kembali.');
+      throw err;
+    }
   };
 
   const handleToggleSelectReceipt = (id: string) => {
@@ -577,7 +583,7 @@ Terima Kasih Atas Kerjasamanya.
         date: formDate,
         customerName: formCustomerName.trim(),
         customerCode: formCustomerCode.trim(),
-        noteBox: formNoteBox.trim() || undefined,
+        noteBox: formNoteBox.trim() || '',
         items: formItems,
         totalAmount: total,
         status: formStatus,
@@ -591,7 +597,7 @@ Terima Kasih Atas Kerjasamanya.
         date: formDate,
         customerName: formCustomerName.trim(),
         customerCode: formCustomerCode.trim() || `#${String(receipts.length + 1).padStart(2, '0')}`,
-        noteBox: formNoteBox.trim() || undefined,
+        noteBox: formNoteBox.trim() || '',
         items: formItems,
         totalAmount: total,
         status: formStatus,

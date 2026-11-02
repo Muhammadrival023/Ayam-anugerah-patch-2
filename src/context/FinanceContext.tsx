@@ -68,6 +68,31 @@ const LOCAL_STORAGE_CAT_KEY = 'ayam_anugerah_cats_v2';
 const LOCAL_STORAGE_BILL_KEY = 'ayam_anugerah_bills_v2';
 const LOCAL_STORAGE_RECEIPT_KEY = 'ayam_anugerah_receipts_v1';
 
+function cleanFirestoreData<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return '' as any;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => cleanFirestoreData(item)) as any;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === undefined) {
+        cleaned[key] = '';
+      } else if (value === null) {
+        cleaned[key] = null;
+      } else if (typeof value === 'object') {
+        cleaned[key] = cleanFirestoreData(value);
+      } else {
+        cleaned[key] = value;
+      }
+    }
+    return cleaned;
+  }
+  return obj;
+}
+
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, adminUser, isAuthenticated, loading: authLoading } = useAuth();
 
@@ -450,11 +475,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addTransaction = async (data: Omit<Transaction, 'id' | 'userId' | 'createdAt'>): Promise<string> => {
     setIsSyncing(true);
     const receiptNumber = data.receiptNumber || generateReceiptNumber();
-    const newTxn = {
+    const newTxn = cleanFirestoreData({
       ...data,
       receiptNumber,
       createdAt: new Date().toISOString(),
-    };
+    });
 
     if (isCloudActive) {
       try {
@@ -483,10 +508,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateTransaction = async (id: string, data: Partial<Transaction>): Promise<void> => {
     setIsSyncing(true);
-    const updateData = {
+    const updateData = cleanFirestoreData({
       ...data,
       updatedAt: new Date().toISOString(),
-    };
+    });
 
     if (isCloudActive) {
       try {
@@ -575,13 +600,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Bill CRUD
   const addBill = async (data: Omit<Bill, 'id' | 'userId' | 'createdAt'>): Promise<string> => {
+    const cleaned = cleanFirestoreData({
+      ...data,
+      userId: currentUid,
+      createdAt: new Date().toISOString(),
+    });
     if (isCloudActive) {
       try {
-        const ref = await addDoc(collection(db, 'bills'), {
-          ...data,
-          userId: currentUid,
-          createdAt: new Date().toISOString(),
-        });
+        const ref = await addDoc(collection(db, 'bills'), cleaned);
         return ref.id;
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, 'bills');
@@ -589,7 +615,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } else {
       const id = 'bill_' + Date.now();
       const newBill: Bill = {
-        ...data,
+        ...cleaned,
         id,
         userId: 'guest',
         createdAt: new Date().toISOString(),
@@ -600,18 +626,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updateBill = async (id: string, data: Partial<Bill>): Promise<void> => {
+    const cleaned = cleanFirestoreData({
+      ...data,
+      updatedAt: new Date().toISOString(),
+    });
     if (isCloudActive) {
       try {
-        await updateDoc(doc(db, 'bills', id), {
-          ...data,
-          updatedAt: new Date().toISOString(),
-        });
+        await updateDoc(doc(db, 'bills', id), cleaned);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `bills/${id}`);
       }
     } else {
       setBills((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, ...data, updatedAt: new Date().toISOString() } : b))
+        prev.map((b) => (b.id === id ? { ...b, ...cleaned } : b))
       );
     }
   };
@@ -849,11 +876,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Receipts Operations (Ayam Anugerah Invoices)
   const addReceipt = async (data: AyamAnugrahReceipt): Promise<string> => {
     setIsSyncing(true);
-    const receiptToSave = {
+    const receiptToSave = cleanFirestoreData({
       ...data,
+      noteBox: data.noteBox ?? '',
+      customerCode: data.customerCode ?? '',
+      paymentType: data.paymentType ?? 'kredit',
+      dueDate: data.dueDate ?? '09/11/2026',
+      remainingDebt: data.remainingDebt !== undefined ? data.remainingDebt : (data.status === 'LUNAS' ? 0 : data.totalAmount),
+      paidAmount: data.paidAmount !== undefined ? data.paidAmount : (data.status === 'LUNAS' ? data.totalAmount : 0),
+      historyDate: data.historyDate ?? '02/11/2026',
+      storeHeaderName: data.storeHeaderName ?? 'aa anugrah',
+      storePhone: data.storePhone ?? '085735144958',
+      storeHandle: data.storeHandle ?? '@@ anugrah',
       userId: currentUid,
       createdAt: data.createdAt || new Date().toISOString(),
-    };
+    });
 
     localStorage.removeItem('ayamanugrah_receipts_cleared');
     if (isCloudActive) {
@@ -875,17 +912,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateReceipt = async (id: string, data: Partial<AyamAnugrahReceipt>): Promise<void> => {
     setIsSyncing(true);
+    const cleanedData = cleanFirestoreData(data);
     if (isCloudActive) {
       try {
-        await updateDoc(doc(db, 'receipts', id), data);
+        await updateDoc(doc(db, 'receipts', id), cleanedData);
         setIsSyncing(false);
       } catch (error) {
         setIsSyncing(false);
-        handleFirestoreError(error, OperationType.UPDATE, 'receipts');
+        handleFirestoreError(error, OperationType.UPDATE, `receipts/${id}`);
       }
     } else {
       setReceipts((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...data } : r))
+        prev.map((r) => (r.id === id ? { ...r, ...cleanedData } : r))
       );
       setIsSyncing(false);
     }
@@ -1083,115 +1121,177 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     syncToFinance: boolean = true
   ): Promise<number> => {
     setIsSyncing(true);
-    const preparedReceipts = newReceipts.map((r, i) => ({
-      ...r,
-      id: r.id || `rcp_${Date.now()}_${i}`,
-      userId: currentUid,
-      createdAt: r.createdAt || new Date().toISOString(),
-    }));
 
+    // Unflag cleared state so receipts are preserved and displayed
+    localStorage.removeItem('ayamanugrah_receipts_cleared');
+    localStorage.setItem('ayamanugrah_receipts_initialized', 'true');
+
+    const preparedReceipts: AyamAnugrahReceipt[] = newReceipts.map((r, i) => {
+      const sanitized: AyamAnugrahReceipt = {
+        id: r.id || `rcp_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: currentUid,
+        receiptNumber: r.receiptNumber || `INV-AA-${String(i + 1).padStart(2, '0')}`,
+        customerName: r.customerName || 'Pelanggan',
+        customerCode: r.customerCode || '',
+        noteBox: r.noteBox || '',
+        date: r.date || getTodayDateString(),
+        time: r.time || '00:57:55',
+        totalAmount: Number(r.totalAmount) || 0,
+        status: r.status || 'BELUM LUNAS',
+        paymentType: r.paymentType || 'kredit',
+        dueDate: r.dueDate || '09/11/2026',
+        remainingDebt: r.remainingDebt !== undefined ? Number(r.remainingDebt) : (r.status === 'LUNAS' ? 0 : Number(r.totalAmount) || 0),
+        paidAmount: r.paidAmount !== undefined ? Number(r.paidAmount) : (r.status === 'LUNAS' ? Number(r.totalAmount) || 0 : 0),
+        historyDate: r.historyDate || '02/11/2026',
+        storeHeaderName: r.storeHeaderName || 'aa anugrah',
+        storePhone: r.storePhone || '085735144958',
+        storeHandle: r.storeHandle || '@@ anugrah',
+        items: (r.items || []).map((item) => ({
+          name: item.name || 'Produk Ayam',
+          detailLabel: item.detailLabel || '',
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit || 'kg',
+          price: Number(item.price) || 0,
+          total: Number(item.total) || 0,
+        })),
+        createdAt: r.createdAt || new Date().toISOString(),
+      };
+      return sanitized;
+    });
+
+    // 1. Immediately update React state and LocalStorage for zero-lag UI feedback
+    let nextReceipts: AyamAnugrahReceipt[] = [];
+    if (mode === 'replace') {
+      nextReceipts = preparedReceipts;
+    } else {
+      nextReceipts = [...preparedReceipts, ...receipts];
+    }
+    setReceipts(nextReceipts);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(nextReceipts));
+    } catch (e) {
+      console.warn('LocalStorage save error:', e);
+    }
+
+    // 2. Prepare financial sync records (Bills for unpaid receipts, Incomes for paid)
+    const today = getTodayDateString();
+    const newBills: Bill[] = [];
+    const newTxns: Transaction[] = [];
+
+    if (syncToFinance) {
+      preparedReceipts.forEach((r) => {
+        if (r.status === 'BELUM LUNAS') {
+          newBills.push({
+            id: 'bill_imp_' + Math.random().toString(36).substring(2, 9),
+            userId: currentUid,
+            title: `Tagihan Gudang - ${r.customerName} (${r.customerCode || '#--'})`,
+            amount: r.totalAmount,
+            category: 'Pelunasan Tagihan Gudang',
+            dueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+            repeatFrequency: 'once',
+            status: 'unpaid',
+            reminderDaysBefore: 1,
+            notes: r.noteBox || `Struk ${r.receiptNumber}`,
+            createdAt: new Date().toISOString(),
+          });
+        } else {
+          newTxns.push({
+            id: 'txn_imp_' + Math.random().toString(36).substring(2, 9),
+            userId: currentUid,
+            type: 'income',
+            amount: r.totalAmount,
+            category: 'Penjualan Ayam Gebrus',
+            description: `Penjualan ${r.customerName} (${r.customerCode || '#--'})`,
+            date: today,
+            paymentMethod: 'Tunai Kasir Gudang',
+            receiptNumber: r.receiptNumber,
+            note: r.noteBox || '',
+            createdAt: new Date().toISOString(),
+          });
+        }
+      });
+
+      if (newBills.length > 0) {
+        setBills((prev) => [...newBills, ...prev]);
+        try {
+          const currentBills = JSON.parse(localStorage.getItem(LOCAL_STORAGE_BILL_KEY) || '[]');
+          localStorage.setItem(LOCAL_STORAGE_BILL_KEY, JSON.stringify([...newBills, ...currentBills]));
+        } catch {}
+      }
+      if (newTxns.length > 0) {
+        setTransactions((prev) => [...newTxns, ...prev]);
+        try {
+          const currentTxns = JSON.parse(localStorage.getItem(LOCAL_STORAGE_TXN_KEY) || '[]');
+          localStorage.setItem(LOCAL_STORAGE_TXN_KEY, JSON.stringify([...newTxns, ...currentTxns]));
+        } catch {}
+      }
+    }
+
+    // 3. Persist to Cloud Firestore in chunked batches
     if (isCloudActive) {
       try {
-        const batch = writeBatch(db);
-        if (mode === 'replace') {
-          receipts.forEach((r) => batch.delete(doc(db, 'receipts', r.id)));
-        }
-        preparedReceipts.forEach((r) => {
-          const ref = doc(collection(db, 'receipts'));
-          batch.set(ref, r);
-        });
+        const operations: Array<{ type: 'set' | 'delete'; ref: any; data?: any }> = [];
 
-        if (syncToFinance) {
-          const today = getTodayDateString();
-          preparedReceipts.forEach((r) => {
-            if (r.status === 'BELUM LUNAS') {
-              const billRef = doc(collection(db, 'bills'));
-              batch.set(billRef, {
-                userId: currentUid,
-                title: `Tagihan Gudang - ${r.customerName} (${r.customerCode || '#--'})`,
-                amount: r.totalAmount,
-                category: 'Pelunasan Tagihan Gudang',
-                dueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-                repeatFrequency: 'once',
-                status: 'unpaid',
-                reminderDaysBefore: 1,
-                notes: r.noteBox || `Struk ${r.receiptNumber}`,
-                createdAt: new Date().toISOString(),
-              });
-            } else if (r.status === 'LUNAS') {
-              const txnRef = doc(collection(db, 'transactions'));
-              batch.set(txnRef, {
-                userId: currentUid,
-                type: 'income',
-                amount: r.totalAmount,
-                category: 'Penjualan Ayam Gebrus',
-                description: `Penjualan ${r.customerName} (${r.customerCode || '#--'})`,
-                date: today,
-                paymentMethod: 'Tunai Kasir Gudang',
-                receiptNumber: r.receiptNumber,
-                note: r.noteBox || '',
-                createdAt: new Date().toISOString(),
-              });
-            }
+        if (mode === 'replace') {
+          const snap = await getDocs(collection(db, 'receipts'));
+          snap.forEach((d) => {
+            operations.push({ type: 'delete', ref: d.ref });
           });
         }
 
-        await batch.commit();
+        preparedReceipts.forEach((r) => {
+          const ref = doc(collection(db, 'receipts'));
+          const firestoreObj = cleanFirestoreData({
+            ...r,
+            userId: currentUid,
+          });
+          operations.push({ type: 'set', ref, data: firestoreObj });
+        });
+
+        if (syncToFinance) {
+          newBills.forEach((b) => {
+            const billRef = doc(collection(db, 'bills'));
+            operations.push({
+              type: 'set',
+              ref: billRef,
+              data: cleanFirestoreData({ ...b, userId: currentUid }),
+            });
+          });
+
+          newTxns.forEach((t) => {
+            const txnRef = doc(collection(db, 'transactions'));
+            operations.push({
+              type: 'set',
+              ref: txnRef,
+              data: cleanFirestoreData({ ...t, userId: currentUid }),
+            });
+          });
+        }
+
+        // Commit in safe chunks of 250 operations to guarantee no batch size limit error
+        const CHUNK_SIZE = 250;
+        for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+          const chunk = operations.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          for (const op of chunk) {
+            if (op.type === 'delete') {
+              batch.delete(op.ref);
+            } else if (op.type === 'set') {
+              batch.set(op.ref, op.data);
+            }
+          }
+          await batch.commit();
+        }
+
         setIsSyncing(false);
         return preparedReceipts.length;
       } catch (error) {
         setIsSyncing(false);
+        console.error('Firestore bulk import error:', error);
         handleFirestoreError(error, OperationType.WRITE, 'receipts');
-        return 0;
+        return preparedReceipts.length;
       }
     } else {
-      if (mode === 'replace') {
-        setReceipts(preparedReceipts);
-      } else {
-        setReceipts((prev) => [...preparedReceipts, ...prev]);
-      }
-
-      if (syncToFinance) {
-        const today = getTodayDateString();
-        const newBills: Bill[] = [];
-        const newTxns: Transaction[] = [];
-
-        preparedReceipts.forEach((r) => {
-          if (r.status === 'BELUM LUNAS') {
-            newBills.push({
-              id: 'bill_imp_' + Math.random().toString(36).substr(2, 9),
-              userId: 'guest',
-              title: `Tagihan Gudang - ${r.customerName} (${r.customerCode || '#--'})`,
-              amount: r.totalAmount,
-              category: 'Pelunasan Tagihan Gudang',
-              dueDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-              repeatFrequency: 'once',
-              status: 'unpaid',
-              reminderDaysBefore: 1,
-              notes: r.noteBox || `Struk ${r.receiptNumber}`,
-              createdAt: new Date().toISOString(),
-            });
-          } else {
-            newTxns.push({
-              id: 'txn_imp_' + Math.random().toString(36).substr(2, 9),
-              userId: 'guest',
-              type: 'income',
-              amount: r.totalAmount,
-              category: 'Penjualan Ayam Gebrus',
-              description: `Penjualan ${r.customerName} (${r.customerCode || '#--'})`,
-              date: today,
-              paymentMethod: 'Tunai Kasir Gudang',
-              receiptNumber: r.receiptNumber,
-              note: r.noteBox || '',
-              createdAt: new Date().toISOString(),
-            });
-          }
-        });
-
-        if (newBills.length > 0) setBills((prev) => [...newBills, ...prev]);
-        if (newTxns.length > 0) setTransactions((prev) => [...newTxns, ...prev]);
-      }
-
       setIsSyncing(false);
       return preparedReceipts.length;
     }
