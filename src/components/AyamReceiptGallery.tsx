@@ -249,6 +249,95 @@ export const AyamReceiptGallery: React.FC<AyamReceiptGalleryProps> = ({ onOpenCl
   };
 
   // ROBUST PRINTING: Generates exact thermal receipt document and prints via hidden iframe
+  const renderThermalReceiptHtml = (receipt: AyamAnugrahReceipt) => {
+    const isLunas = receipt.status === 'LUNAS';
+    const customerDisplay = `${receipt.customerName} ${receipt.customerCode ? receipt.customerCode.replace('#', '') : ''}`.trim();
+    const dateStr = receipt.date || '2026-11-02';
+    const timeStr = receipt.time || '00:57:55';
+    const handleStr = receipt.storeHandle || '@@ anugrah';
+
+    return `
+      <div class="receipt-body">
+        <div class="center" style="margin-bottom: 6px;">
+          <img src="/assets/rooster-mascot.png" alt="Mascot" style="width: 62px; height: auto; margin: 0 auto; display: block;" />
+        </div>
+        <div class="center bold brand-title">${receipt.storeHeaderName || 'aa anugrah'}</div>
+        <div class="center brand-sub">Menyediakan Daging Ayam FRESH &amp; TERJANGKAU</div>
+        <div class="center brand-sub">Untuk Kebutuhan Anda</div>
+        <div class="center brand-phone">&#128222; ${receipt.storePhone || '085735144958'}</div>
+
+        <div class="dashed"></div>
+
+        <div class="flex-between meta-text">
+          <div>
+            <div>${dateStr}</div>
+            <div>${timeStr}</div>
+          </div>
+          <div style="text-align: right;">
+            <div>${handleStr}</div>
+            <div>${handleStr}</div>
+          </div>
+        </div>
+
+        <div class="dashed"></div>
+
+        <div class="bold" style="font-size: 13px; margin: 3px 0 5px 0;">
+          ${customerDisplay}
+        </div>
+        ${receipt.noteBox ? `<div class="note-box">${receipt.noteBox}</div>` : ''}
+
+        <div class="items-wrap">
+          ${receipt.items
+            .map((item) => {
+              const isChicken = (item.name || '').toLowerCase().includes('ayam');
+              return `
+              <div class="line-item">
+                ${!isChicken ? `<div class="bold item-title">${item.name}</div>` : ''}
+                <div class="flex-between">
+                  <span>${item.quantity} x ${formatAngkaIndo(item.price)}</span>
+                  <span>Rp ${formatAngkaIndo(item.total)}</span>
+                </div>
+              </div>
+            `;
+            })
+            .join('')}
+        </div>
+
+        <div class="dashed"></div>
+
+        <div class="flex-between" style="font-size: 13px; margin: 4px 0;">
+          <span>Total</span>
+          <span class="bold">Rp ${formatAngkaIndo(receipt.totalAmount)}</span>
+        </div>
+
+        <div class="dashed"></div>
+
+        <div class="flex-between meta-text">
+          <span>Tipe: ${receipt.paymentType || 'kredit'}</span>
+          <span>due: ${receipt.dueDate || '09/11/2026'}</span>
+        </div>
+        <div class="meta-text">
+          Status: ${isLunas ? 'Lunas' : 'Belum Lunas'}
+        </div>
+        <div class="meta-text">
+          Sisa utang: Rp ${formatAngkaIndo(isLunas ? 0 : (receipt.remainingDebt ?? receipt.totalAmount))}
+        </div>
+
+        <div class="dashed"></div>
+
+        <div class="meta-text">History Pembayaran Utang:</div>
+        <div class="flex-between meta-text" style="margin-top: 2px;">
+          <span>${receipt.historyDate || '02/11/2026'}</span>
+          <span>Rp ${formatAngkaIndo(isLunas ? receipt.totalAmount : (receipt.paidAmount ?? 0))}</span>
+        </div>
+
+        <div class="center" style="margin-top: 14px;">
+          <img src="/assets/kasir-pintar-footer.png" alt="Kasir Pintar" style="width: 175px; height: auto; margin: 0 auto; display: block;" />
+        </div>
+      </div>
+    `;
+  };
+
   const printSingleReceipt = (receipt: AyamAnugrahReceipt) => {
     const receiptHtml = `
       <!DOCTYPE html>
@@ -265,7 +354,7 @@ export const AyamReceiptGallery: React.FC<AyamReceiptGalleryProps> = ({ onOpenCl
               font-family: 'Courier New', Courier, monospace;
               width: 72mm;
               margin: 0 auto;
-              padding: 8px 4px;
+              padding: 10px 4px;
               color: #000;
               background: #fff;
               font-size: 11px;
@@ -274,57 +363,25 @@ export const AyamReceiptGallery: React.FC<AyamReceiptGalleryProps> = ({ onOpenCl
             .center { text-align: center; }
             .bold { font-weight: bold; }
             .dashed { border-bottom: 1px dashed #000; margin: 6px 0; }
-            .line-item { margin: 6px 0; }
+            .brand-title { font-family: system-ui, -apple-system, sans-serif; font-size: 17px; margin-bottom: 2px; }
+            .brand-sub { font-family: system-ui, -apple-system, sans-serif; font-size: 9.5px; color: #222; }
+            .brand-phone { font-family: system-ui, -apple-system, sans-serif; font-size: 10.5px; font-weight: bold; margin-top: 2px; }
+            .meta-text { font-size: 10.5px; }
+            .line-item { margin: 4px 0; font-size: 11.5px; }
+            .item-title { font-size: 11.5px; margin-bottom: 1px; }
             .flex-between { display: flex; justify-content: space-between; }
             .note-box {
               display: inline-block;
               border: 1px solid #000;
               padding: 2px 6px;
-              margin: 4px 0;
+              margin: 3px 0;
               font-weight: bold;
               font-size: 10px;
             }
           </style>
         </head>
         <body>
-          <div class="center bold" style="font-size: 14px; letter-spacing: 1px;">AYAM @ ANUGRAH</div>
-          <div class="center" style="font-size: 10px;">DATA HARIAN GUDANG</div>
-          <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">STRUK TAGIHAN / INVOICE</div>
-          <div class="dashed"></div>
-
-          <div>Tanggal   : ${receipt.date}</div>
-          <div style="font-weight: bold;">Pelanggan : ${receipt.customerName} (${receipt.customerCode || '#--'})</div>
-          ${receipt.noteBox ? `<div class="note-box">${receipt.noteBox}</div>` : ''}
-          <div class="dashed"></div>
-
-          ${receipt.items
-            .map(
-              (item) => `
-            <div class="line-item">
-              <div class="bold">${item.name} ${item.detailLabel || ''}</div>
-              <div class="flex-between">
-                <span>&nbsp;&nbsp;${item.quantity} ${item.unit} x ${formatAngkaIndo(item.price)}</span>
-                <span class="bold">Rp ${formatAngkaIndo(item.total)}</span>
-              </div>
-            </div>
-          `
-            )
-            .join('')}
-
-          <div class="dashed" style="border-bottom: 2px solid #000;"></div>
-          <div class="flex-between bold" style="font-size: 13px; margin: 4px 0;">
-            <span>TOTAL TAGIHAN</span>
-            <span>Rp ${formatAngkaIndo(receipt.totalAmount)}</span>
-          </div>
-          <div style="font-weight: bold; font-size: 11px;">
-            Status Pembayaran[ ${receipt.status} ]
-          </div>
-          <div class="dashed"></div>
-
-          <div class="center" style="font-size: 9px; margin-top: 6px;">
-            Mohon segera melakukan pembayaran.<br>
-            Terima Kasih Atas Kerjasamanya.
-          </div>
+          ${renderThermalReceiptHtml(receipt)}
           <script>
             window.onload = function() {
               window.focus();
@@ -376,45 +433,8 @@ export const AyamReceiptGallery: React.FC<AyamReceiptGalleryProps> = ({ onOpenCl
     const combinedReceiptsHtml = filteredReceipts
       .map(
         (receipt) => `
-        <div style="page-break-after: always; padding: 10px 4px; width: 72mm; margin: 0 auto;">
-          <div class="center bold" style="font-size: 14px; letter-spacing: 1px;">AYAM @ ANUGRAH</div>
-          <div class="center" style="font-size: 10px;">DATA HARIAN GUDANG</div>
-          <div class="center bold" style="font-size: 10px; margin-bottom: 4px;">STRUK TAGIHAN / INVOICE</div>
-          <div class="dashed"></div>
-
-          <div>Tanggal   : ${receipt.date}</div>
-          <div style="font-weight: bold;">Pelanggan : ${receipt.customerName} (${receipt.customerCode || '#--'})</div>
-          ${receipt.noteBox ? `<div class="note-box">${receipt.noteBox}</div>` : ''}
-          <div class="dashed"></div>
-
-          ${receipt.items
-            .map(
-              (item) => `
-            <div class="line-item">
-              <div class="bold">${item.name} ${item.detailLabel || ''}</div>
-              <div class="flex-between">
-                <span>&nbsp;&nbsp;${item.quantity} ${item.unit} x ${formatAngkaIndo(item.price)}</span>
-                <span class="bold">Rp ${formatAngkaIndo(item.total)}</span>
-              </div>
-            </div>
-          `
-            )
-            .join('')}
-
-          <div class="dashed" style="border-bottom: 2px solid #000;"></div>
-          <div class="flex-between bold" style="font-size: 13px; margin: 4px 0;">
-            <span>TOTAL TAGIHAN</span>
-            <span>Rp ${formatAngkaIndo(receipt.totalAmount)}</span>
-          </div>
-          <div style="font-weight: bold; font-size: 11px;">
-            Status Pembayaran[ ${receipt.status} ]
-          </div>
-          <div class="dashed"></div>
-
-          <div class="center" style="font-size: 9px; margin-top: 6px;">
-            Mohon segera melakukan pembayaran.<br>
-            Terima Kasih Atas Kerjasamanya.
-          </div>
+        <div style="page-break-after: always; padding: 12px 4px; width: 72mm; margin: 0 auto;">
+          ${renderThermalReceiptHtml(receipt)}
         </div>
       `
       )
@@ -1088,82 +1108,170 @@ Terima Kasih Atas Kerjasamanya.
                 </div>
               )}
 
-              {/* Receipt Content (Exact match to screenshot) */}
-              <div className="space-y-1">
-                <div className="text-center font-bold text-sm tracking-wider uppercase text-gray-900">
-                  AYAM @ ANUGRAH
-                </div>
-                <div className="text-center text-[10px] text-gray-700 tracking-wide">
-                  DATA HARIAN GUDANG
-                </div>
-                <div className="text-center font-bold text-[11px] text-gray-900 tracking-wider">
-                  STRUK TAGIHAN / INVOICE
-                </div>
-                <div className="border-b border-dashed border-gray-400 my-2"></div>
-
-                <div className="text-[11px] text-gray-800">
-                  Tanggal &nbsp; : {receipt.date}
-                </div>
-                <div className="text-[11px] font-bold text-gray-900">
-                  Pelanggan : {receipt.customerName} ({receipt.customerCode || '#--'})
+              {/* Receipt Paper Container with Sawtooth Jagged Tear Edges */}
+              <div className="bg-neutral-900/90 rounded-2xl p-2 sm:p-3 shadow-xl">
+                {/* Top Sawtooth / Zigzag Jagged Tear */}
+                <div className="w-full h-3 overflow-hidden text-white -mb-0.5 select-none pointer-events-none">
+                  <svg className="w-full h-3 fill-current" preserveAspectRatio="none" viewBox="0 0 100 10">
+                    <polygon points="0,10 2.5,0 5,10 7.5,0 10,10 12.5,0 15,10 17.5,0 20,10 22.5,0 25,10 27.5,0 30,10 32.5,0 35,10 37.5,0 40,10 42.5,0 45,10 47.5,0 50,10 52.5,0 55,10 57.5,0 60,10 62.5,0 65,10 67.5,0 70,10 72.5,0 75,10 77.5,0 80,10 82.5,0 85,10 87.5,0 90,10 92.5,0 95,10 97.5,0 100,10" />
+                  </svg>
                 </div>
 
-                {receipt.noteBox && (
-                  <div className="pt-1 pb-1">
-                    <span className="inline-block border border-gray-900 px-2.5 py-0.5 text-[10px] font-bold bg-white text-gray-900">
-                      {receipt.noteBox}
+                {/* White Thermal Receipt Paper Body */}
+                <div className="bg-white px-5 sm:px-7 py-5 font-mono text-gray-900 shadow-inner">
+                  {/* Rooster Mascot */}
+                  <div className="flex justify-center mb-1">
+                    <img
+                      src="/assets/rooster-mascot.png"
+                      alt="Logo Ayam Anugrah"
+                      className="w-18 h-18 sm:w-20 sm:h-20 object-contain drop-shadow-xs"
+                      loading="lazy"
+                    />
+                  </div>
+
+                  {/* Store Brand Header */}
+                  <div className="text-center space-y-0.5 font-sans">
+                    <div className="font-black text-xl sm:text-2xl tracking-tight text-gray-950">
+                      {receipt.storeHeaderName || 'aa anugrah'}
+                    </div>
+                    <div className="text-[11px] sm:text-xs text-gray-800 leading-tight">
+                      Menyediakan Daging Ayam FRESH &amp; TERJANGKAU
+                    </div>
+                    <div className="text-[11px] sm:text-xs text-gray-800 leading-tight">
+                      Untuk Kebutuhan Anda
+                    </div>
+                    <div className="text-xs font-bold text-gray-950 pt-0.5">
+                      📞 {receipt.storePhone || '085735144958'}
+                    </div>
+                  </div>
+
+                  {/* Dashed Separator */}
+                  <div className="border-b border-dashed border-gray-400 my-2.5"></div>
+
+                  {/* 2-Column Metadata (Date/Time & Social Handles) */}
+                  <div className="flex justify-between items-start text-xs text-gray-900 leading-snug">
+                    <div>
+                      <div>{receipt.date || '2026-11-02'}</div>
+                      <div>{receipt.time || '00:57:55'}</div>
+                    </div>
+                    <div className="text-right">
+                      <div>{receipt.storeHandle || '@@ anugrah'}</div>
+                      <div>{receipt.storeHandle || '@@ anugrah'}</div>
+                    </div>
+                  </div>
+
+                  {/* Dashed Separator */}
+                  <div className="border-b border-dashed border-gray-400 my-2.5"></div>
+
+                  {/* Customer Line */}
+                  <div className="font-bold text-sm text-gray-950">
+                    {receipt.customerName}{' '}
+                    {receipt.customerCode ? receipt.customerCode.replace('#', '') : ''}
+                  </div>
+
+                  {receipt.noteBox && (
+                    <div className="my-1.5">
+                      <span className="inline-block border border-gray-900 px-2 py-0.5 text-[10px] font-sans font-bold bg-white text-gray-900">
+                        {receipt.noteBox}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Line Items */}
+                  <div className="space-y-2.5 py-1">
+                    {receipt.items.map((item, idx) => {
+                      const isChicken = (item.name || '').toLowerCase().includes('ayam');
+                      return (
+                        <div key={idx} className="space-y-0.5">
+                          {!isChicken && (
+                            <div className="font-bold text-gray-950 text-xs">
+                              {item.name}
+                            </div>
+                          )}
+                          <div className="flex justify-between items-baseline text-xs text-gray-900">
+                            <span>
+                              {item.quantity} x {formatAngkaIndo(item.price)}
+                            </span>
+                            <span className="font-semibold text-gray-950">
+                              Rp {formatAngkaIndo(item.total)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dashed Separator */}
+                  <div className="border-b border-dashed border-gray-400 my-2.5"></div>
+
+                  {/* Total */}
+                  <div className="flex justify-between items-center text-sm font-bold text-gray-950">
+                    <span className="font-medium">Total</span>
+                    <span className="text-base font-extrabold">
+                      Rp {formatAngkaIndo(receipt.totalAmount)}
                     </span>
                   </div>
-                )}
 
-                <div className="border-b border-dashed border-gray-400 my-2"></div>
+                  {/* Dashed Separator */}
+                  <div className="border-b border-dashed border-gray-400 my-2.5"></div>
 
-                {/* Items */}
-                <div className="space-y-3 py-1">
-                  {receipt.items.map((item, idx) => (
-                    <div key={idx} className="space-y-0.5">
-                      <div className="font-bold text-gray-900 text-xs">
-                        {item.name} {item.detailLabel || ''}
-                      </div>
-                      <div className="flex justify-between items-baseline text-gray-800 text-[11px]">
-                        <span className="pl-3">
-                          {item.quantity} {item.unit} x {formatAngkaIndo(item.price)}
-                        </span>
-                        <span className="font-semibold">Rp {formatAngkaIndo(item.total)}</span>
-                      </div>
+                  {/* Credit / Due Section */}
+                  <div className="space-y-1 text-xs text-gray-900">
+                    <div className="flex justify-between items-center">
+                      <span>Tipe: {receipt.paymentType || 'kredit'}</span>
+                      <span>due: {receipt.dueDate || '09/11/2026'}</span>
                     </div>
-                  ))}
+                    <div className="flex justify-between items-center">
+                      <span>Status: {isLunas ? 'Lunas' : 'Belum Lunas'}</span>
+                      <button
+                        onClick={() => handleToggleStatus(receipt.id)}
+                        title="Klik untuk ubah status lunas / belum lunas"
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase transition-all ${
+                          isLunas
+                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-400 hover:bg-emerald-200'
+                            : 'bg-rose-100 text-rose-900 border border-rose-400 hover:bg-rose-200'
+                        }`}
+                      >
+                        [ {receipt.status} ]
+                      </button>
+                    </div>
+                    <div>
+                      Sisa utang: Rp{' '}
+                      {formatAngkaIndo(isLunas ? 0 : (receipt.remainingDebt ?? receipt.totalAmount))}
+                    </div>
+                  </div>
+
+                  {/* Dashed Separator */}
+                  <div className="border-b border-dashed border-gray-400 my-2.5"></div>
+
+                  {/* History Pembayaran Utang Section */}
+                  <div className="space-y-1 text-xs text-gray-900">
+                    <div>History Pembayaran Utang:</div>
+                    <div className="flex justify-between items-center">
+                      <span>{receipt.historyDate || '02/11/2026'}</span>
+                      <span className="font-semibold">
+                        Rp{' '}
+                        {formatAngkaIndo(isLunas ? receipt.totalAmount : (receipt.paidAmount ?? 0))}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Kasir Pintar / Play Store Footer */}
+                  <div className="mt-5 pt-1 text-center">
+                    <img
+                      src="/assets/kasir-pintar-footer.png"
+                      alt="Kasir Pintar & Google Play"
+                      className="w-52 sm:w-56 h-auto mx-auto object-contain"
+                      loading="lazy"
+                    />
+                  </div>
                 </div>
 
-                <div className="border-b-2 border-gray-900 my-2.5"></div>
-
-                {/* Total */}
-                <div className="flex justify-between items-center font-extrabold text-xs sm:text-sm text-gray-900">
-                  <span>TOTAL TAGIHAN</span>
-                  <span className="text-sm sm:text-base">Rp {formatAngkaIndo(receipt.totalAmount)}</span>
-                </div>
-
-                {/* Interactive Status Badge Button */}
-                <div className="pt-1 flex items-center justify-between">
-                  <span className="text-[11px] text-gray-700">Status Pembayaran</span>
-                  <button
-                    onClick={() => handleToggleStatus(receipt.id)}
-                    title="Klik untuk ubah status lunas / belum lunas"
-                    className={`px-2 py-0.5 text-[11px] font-bold rounded-sm uppercase transition-all ${
-                      isLunas
-                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-400 hover:bg-emerald-200'
-                        : 'bg-rose-100 text-rose-900 border border-rose-400 hover:bg-rose-200'
-                    }`}
-                  >
-                    [ {receipt.status} ]
-                  </button>
-                </div>
-
-                <div className="border-b border-dashed border-gray-400 my-2.5"></div>
-
-                <div className="text-center text-[10px] text-gray-600 leading-tight pt-1">
-                  Mohon segera melakukan pembayaran.<br />
-                  Terima Kasih Atas Kerjasamanya.
+                {/* Bottom Sawtooth / Zigzag Jagged Tear */}
+                <div className="w-full h-3 overflow-hidden text-white -mt-0.5 select-none pointer-events-none">
+                  <svg className="w-full h-3 fill-current rotate-180" preserveAspectRatio="none" viewBox="0 0 100 10">
+                    <polygon points="0,10 2.5,0 5,10 7.5,0 10,10 12.5,0 15,10 17.5,0 20,10 22.5,0 25,10 27.5,0 30,10 32.5,0 35,10 37.5,0 40,10 42.5,0 45,10 47.5,0 50,10 52.5,0 55,10 57.5,0 60,10 62.5,0 65,10 67.5,0 70,10 72.5,0 75,10 77.5,0 80,10 82.5,0 85,10 87.5,0 90,10 92.5,0 95,10 97.5,0 100,10" />
+                  </svg>
                 </div>
               </div>
 

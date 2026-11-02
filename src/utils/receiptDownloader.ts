@@ -26,8 +26,8 @@ export const sanitizeFilename = (name: string): string => {
  * Formats a single receipt into monospace text (suitable for POS thermal printer or TXT archive)
  */
 export const formatReceiptAsText = (receipt: AyamAnugrahReceipt): string => {
-  const sep = '------------------------------------------------';
-  const width = 48;
+  const sep = '----------------------------------------';
+  const width = 40;
 
   const center = (str: string) => {
     const pad = Math.max(0, Math.floor((width - str.length) / 2));
@@ -39,35 +39,48 @@ export const formatReceiptAsText = (receipt: AyamAnugrahReceipt): string => {
     return left + ' '.repeat(spaces) + right;
   };
 
+  const customerStr = `${receipt.customerName} ${receipt.customerCode ? receipt.customerCode.replace('#', '') : ''}`.trim();
+  const dateStr = receipt.date || '2026-11-02';
+  const timeStr = receipt.time || '00:57:55';
+  const isLunas = receipt.status === 'LUNAS';
+
   const lines: string[] = [
-    center('AYAM @ ANUGRAH'),
-    center('DATA HARIAN GUDANG'),
-    center('STRUK TAGIHAN / INVOICE'),
+    center('aa anugrah'),
+    center('Menyediakan Daging Ayam FRESH & TERJANGKAU'),
+    center('Untuk Kebutuhan Anda'),
+    center('📞 085735144958'),
     sep,
-    `Tanggal   : ${receipt.date}`,
-    `Pelanggan : ${receipt.customerName} (${receipt.customerCode || '#--'})`,
+    lineBetween(dateStr, receipt.storeHandle || '@@ anugrah'),
+    lineBetween(timeStr, receipt.storeHandle || '@@ anugrah'),
+    sep,
+    customerStr,
   ];
 
   if (receipt.noteBox) {
-    lines.push(`Ket: [ ${receipt.noteBox} ]`);
+    lines.push(`[ ${receipt.noteBox} ]`);
   }
 
-  lines.push(sep);
-
   receipt.items.forEach((item) => {
-    const itemTitle = `${item.name} ${item.detailLabel || ''}`.trim();
-    lines.push(itemTitle);
-    const subLeft = `  ${item.quantity} ${item.unit} x ${formatAngkaIndo(item.price)}`;
+    const isChicken = (item.name || '').toLowerCase().includes('ayam');
+    if (!isChicken) {
+      lines.push(item.name);
+    }
+    const subLeft = `${item.quantity} x ${formatAngkaIndo(item.price)}`;
     const subRight = `Rp ${formatAngkaIndo(item.total)}`;
     lines.push(lineBetween(subLeft, subRight));
   });
 
   lines.push(sep);
-  lines.push(lineBetween('TOTAL TAGIHAN', `Rp ${formatAngkaIndo(receipt.totalAmount)}`));
-  lines.push(`Status Pembayaran [ ${receipt.status} ]`);
+  lines.push(lineBetween('Total', `Rp ${formatAngkaIndo(receipt.totalAmount)}`));
   lines.push(sep);
-  lines.push(center('Mohon segera melakukan pembayaran.'));
-  lines.push(center('Terima Kasih Atas Kerjasamanya.'));
+  lines.push(lineBetween(`Tipe: ${receipt.paymentType || 'kredit'}`, `due: ${receipt.dueDate || '09/11/2026'}`));
+  lines.push(`Status: ${isLunas ? 'Lunas' : 'Belum Lunas'}`);
+  lines.push(`Sisa utang: Rp ${formatAngkaIndo(isLunas ? 0 : (receipt.remainingDebt ?? receipt.totalAmount))}`);
+  lines.push(sep);
+  lines.push('History Pembayaran Utang:');
+  lines.push(lineBetween(receipt.historyDate || '02/11/2026', `Rp ${formatAngkaIndo(isLunas ? receipt.totalAmount : (receipt.paidAmount || 0))}`));
+  lines.push(sep);
+  lines.push(center('[KASIR PINTAR - Google Play]'));
   lines.push('');
 
   return lines.join('\n');
@@ -188,16 +201,30 @@ export const downloadAllReceiptsAsCsv = (receipts: AyamAnugrahReceipt[]) => {
  * Exactly mirrors the physical receipt screenshot layout
  */
 export const downloadReceiptAsPng = async (receipt: AyamAnugrahReceipt): Promise<void> => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
-      // Scale factor for Retina / high-DPI crystal-clear output
       const scale = 2;
-      const baseWidth = 440;
+      const baseWidth = 420;
 
-      // Calculate required height dynamically
-      let estimatedHeight = 360;
-      if (receipt.noteBox) estimatedHeight += 40;
-      estimatedHeight += receipt.items.length * 48;
+      // Helper to load image
+      const loadImage = (url: string): Promise<HTMLImageElement | null> =>
+        new Promise((res) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => res(img);
+          img.onerror = () => res(null);
+          img.src = url;
+        });
+
+      const [roosterImg, footerImg] = await Promise.all([
+        loadImage('/assets/rooster-mascot.png'),
+        loadImage('/assets/kasir-pintar-footer.png'),
+      ]);
+
+      // Calculate height dynamically
+      let estimatedHeight = 580;
+      estimatedHeight += receipt.items.length * 36;
+      if (receipt.noteBox) estimatedHeight += 32;
 
       const canvas = document.createElement('canvas');
       canvas.width = baseWidth * scale;
@@ -210,49 +237,88 @@ export const downloadReceiptAsPng = async (receipt: AyamAnugrahReceipt): Promise
 
       ctx.scale(scale, scale);
 
-      // 1. Background (Clean white POS paper look with faint shadow border)
-      ctx.fillStyle = '#ffffff';
+      // Dark background border (as seen in photo)
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, baseWidth, estimatedHeight);
 
-      // Outer paper border
-      ctx.strokeStyle = '#e2e8f0';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(1, 1, baseWidth - 2, estimatedHeight - 2);
+      // Thermal paper margin
+      const paperLeft = 14;
+      const paperRight = baseWidth - 14;
+      const paperWidth = paperRight - paperLeft;
+
+      // White thermal paper
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(paperLeft, 10, paperWidth, estimatedHeight - 20);
+
+      // Sawtooth zigzag tear edges at top and bottom of white paper
+      const toothWidth = 14;
+      const toothHeight = 7;
+      ctx.fillStyle = '#000000';
+
+      // Top teeth
+      ctx.beginPath();
+      ctx.moveTo(paperLeft, 10);
+      for (let x = paperLeft; x < paperRight; x += toothWidth) {
+        ctx.lineTo(x + toothWidth / 2, 10 + toothHeight);
+        ctx.lineTo(x + toothWidth, 10);
+      }
+      ctx.lineTo(paperRight, 0);
+      ctx.lineTo(paperLeft, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Bottom teeth
+      const bottomY = estimatedHeight - 10;
+      ctx.beginPath();
+      ctx.moveTo(paperLeft, bottomY);
+      for (let x = paperLeft; x < paperRight; x += toothWidth) {
+        ctx.lineTo(x + toothWidth / 2, bottomY - toothHeight);
+        ctx.lineTo(x + toothWidth, bottomY);
+      }
+      ctx.lineTo(paperRight, estimatedHeight);
+      ctx.lineTo(paperLeft, estimatedHeight);
+      ctx.closePath();
+      ctx.fill();
 
       let y = 30;
 
-      // Header: AYAM @ ANUGRAH
-      ctx.fillStyle = '#111827';
-      ctx.font = 'bold 18px "Courier New", Courier, monospace';
-      ctx.textAlign = 'center';
-      ctx.letterSpacing = '1px';
-      ctx.fillText('AYAM @ ANUGRAH', baseWidth / 2, y);
+      // Draw Rooster Mascot
+      if (roosterImg) {
+        const mascotW = 75;
+        const mascotH = (roosterImg.height / roosterImg.width) * mascotW;
+        ctx.drawImage(roosterImg, (baseWidth - mascotW) / 2, y, mascotW, mascotH);
+        y += mascotH + 10;
+      } else {
+        y += 20;
+      }
 
-      y += 20;
-      ctx.font = '12px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#374151';
-      ctx.fillText('DATA HARIAN GUDANG', baseWidth / 2, y);
+      // Business Header: aa anugrah
+      ctx.fillStyle = '#111827';
+      ctx.font = 'bold 22px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(receipt.storeHeaderName || 'aa anugrah', baseWidth / 2, y);
 
       y += 18;
-      ctx.font = 'bold 13px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#111827';
-      ctx.fillText('STRUK TAGIHAN / INVOICE', baseWidth / 2, y);
+      ctx.font = 'normal 11.5px system-ui, -apple-system, sans-serif';
+      ctx.fillStyle = '#1f2937';
+      ctx.fillText('Menyediakan Daging Ayam FRESH & TERJANGKAU', baseWidth / 2, y);
 
-      // Dashed line helper
-      const drawDashedLine = (lineY: number, isSolid = false) => {
+      y += 16;
+      ctx.fillText('Untuk Kebutuhan Anda', baseWidth / 2, y);
+
+      y += 18;
+      ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+      ctx.fillText(`📞 ${receipt.storePhone || '085735144958'}`, baseWidth / 2, y);
+
+      // Helper for dashed separator line
+      const drawDashedLine = (lineY: number) => {
         ctx.save();
         ctx.beginPath();
-        if (isSolid) {
-          ctx.setLineDash([]);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#111827';
-        } else {
-          ctx.setLineDash([5, 4]);
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = '#6b7280';
-        }
-        ctx.moveTo(24, lineY);
-        ctx.lineTo(baseWidth - 24, lineY);
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#6b7280';
+        ctx.moveTo(paperLeft + 16, lineY);
+        ctx.lineTo(paperRight - 16, lineY);
         ctx.stroke();
         ctx.restore();
       };
@@ -260,98 +326,120 @@ export const downloadReceiptAsPng = async (receipt: AyamAnugrahReceipt): Promise
       y += 14;
       drawDashedLine(y);
 
-      // Date & Customer Info
-      y += 22;
-      ctx.textAlign = 'left';
-      ctx.font = '13px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#1f2937';
-      ctx.fillText(`Tanggal   : ${receipt.date}`, 24, y);
+      // Metadata: Date/time on left, @@ anugrah on right
+      const padX = paperLeft + 16;
+      const rightPadX = paperRight - 16;
+      const dateStr = receipt.date || '2026-11-02';
+      const timeStr = receipt.time || '00:57:55';
+      const handleStr = receipt.storeHandle || '@@ anugrah';
 
       y += 20;
-      ctx.font = 'bold 13px "Courier New", Courier, monospace';
-      ctx.fillText(`Pelanggan : ${receipt.customerName} (${receipt.customerCode || '#--'})`, 24, y);
+      ctx.font = '12.5px "Courier New", Courier, monospace';
+      ctx.fillStyle = '#111827';
+      ctx.textAlign = 'left';
+      ctx.fillText(dateStr, padX, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(handleStr, rightPadX, y);
 
-      // Note Box if present (e.g. Ket: Pita Putih)
-      if (receipt.noteBox) {
-        y += 12;
-        const boxText = receipt.noteBox;
-        ctx.font = 'bold 12px "Courier New", Courier, monospace';
-        const textWidth = ctx.measureText(boxText).width;
-        const boxPadX = 8;
-        const boxPadY = 4;
+      y += 18;
+      ctx.textAlign = 'left';
+      ctx.fillText(timeStr, padX, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(handleStr, rightPadX, y);
 
-        ctx.strokeStyle = '#111827';
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(24, y, textWidth + boxPadX * 2, 20);
-
-        ctx.fillStyle = '#111827';
-        ctx.fillText(boxText, 24 + boxPadX, y + 14);
-        y += 24;
-      }
-
-      y += 10;
+      y += 14;
       drawDashedLine(y);
 
+      // Customer line (e.g. Ahmad 70 e)
+      y += 22;
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 15px "Courier New", Courier, monospace';
+      const customerDisplay = `${receipt.customerName} ${receipt.customerCode ? receipt.customerCode.replace('#', '') : ''}`.trim();
+      ctx.fillText(customerDisplay, padX, y);
+
+      if (receipt.noteBox) {
+        y += 16;
+        ctx.font = 'bold 11px system-ui, sans-serif';
+        const boxText = receipt.noteBox;
+        const tw = ctx.measureText(boxText).width;
+        ctx.strokeRect(padX, y - 11, tw + 10, 16);
+        ctx.fillText(boxText, padX + 5, y);
+      }
+
       // Items list
-      y += 12;
       receipt.items.forEach((item) => {
-        y += 14;
-        ctx.font = 'bold 13px "Courier New", Courier, monospace';
-        ctx.fillStyle = '#111827';
-        ctx.textAlign = 'left';
-        ctx.fillText(`${item.name} ${item.detailLabel || ''}`.trim(), 24, y);
+        const isChicken = (item.name || '').toLowerCase().includes('ayam');
+        if (!isChicken) {
+          y += 20;
+          ctx.font = 'bold 13.5px "Courier New", Courier, monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(item.name, padX, y);
+        }
 
         y += 18;
-        ctx.font = '12px "Courier New", Courier, monospace';
-        ctx.fillStyle = '#374151';
+        ctx.font = '13.5px "Courier New", Courier, monospace';
         ctx.textAlign = 'left';
-        ctx.fillText(`  ${item.quantity} ${item.unit} x ${formatAngkaIndo(item.price)}`, 24, y);
+        ctx.fillText(`${item.quantity} x ${formatAngkaIndo(item.price)}`, padX, y);
 
-        ctx.font = 'bold 13px "Courier New", Courier, monospace';
-        ctx.fillStyle = '#111827';
         ctx.textAlign = 'right';
-        ctx.fillText(`Rp ${formatAngkaIndo(item.total)}`, baseWidth - 24, y);
+        ctx.fillText(`Rp ${formatAngkaIndo(item.total)}`, rightPadX, y);
       });
 
       y += 14;
-      drawDashedLine(y, true); // Solid separator for total
+      drawDashedLine(y);
 
       // Total
       y += 22;
-      ctx.font = 'bold 15px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#111827';
+      ctx.font = 'normal 14.5px "Courier New", Courier, monospace';
       ctx.textAlign = 'left';
-      ctx.fillText('TOTAL TAGIHAN', 24, y);
+      ctx.fillText('Total', padX, y);
 
       ctx.textAlign = 'right';
-      ctx.font = 'bold 16px "Courier New", Courier, monospace';
-      ctx.fillText(`Rp ${formatAngkaIndo(receipt.totalAmount)}`, baseWidth - 24, y);
-
-      // Payment Status
-      y += 24;
-      ctx.textAlign = 'left';
-      ctx.font = '12px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#4b5563';
-      ctx.fillText('Status Pembayaran', 24, y);
-
-      const isLunas = receipt.status === 'LUNAS';
-      ctx.textAlign = 'right';
-      ctx.font = 'bold 13px "Courier New", Courier, monospace';
-      ctx.fillStyle = isLunas ? '#047857' : '#b91c1c';
-      ctx.fillText(`[ ${receipt.status} ]`, baseWidth - 24, y);
+      ctx.font = 'bold 15.5px "Courier New", Courier, monospace';
+      ctx.fillText(`Rp ${formatAngkaIndo(receipt.totalAmount)}`, rightPadX, y);
 
       y += 14;
       drawDashedLine(y);
 
-      // Footer
+      // Credit / Due section
+      const isLunas = receipt.status === 'LUNAS';
       y += 20;
-      ctx.textAlign = 'center';
-      ctx.font = '11px "Courier New", Courier, monospace';
-      ctx.fillStyle = '#4b5563';
-      ctx.fillText('Mohon segera melakukan pembayaran.', baseWidth / 2, y);
+      ctx.font = '13px "Courier New", Courier, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Tipe: ${receipt.paymentType || 'kredit'}`, padX, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(`due: ${receipt.dueDate || '09/11/2026'}`, rightPadX, y);
 
-      y += 16;
-      ctx.fillText('Terima Kasih Atas Kerjasamanya.', baseWidth / 2, y);
+      y += 18;
+      ctx.textAlign = 'left';
+      ctx.fillText(`Status: ${isLunas ? 'Lunas' : 'Belum Lunas'}`, padX, y);
+
+      y += 18;
+      const sisaDebt = isLunas ? 0 : (receipt.remainingDebt ?? receipt.totalAmount);
+      ctx.fillText(`Sisa utang: Rp ${formatAngkaIndo(sisaDebt)}`, padX, y);
+
+      y += 14;
+      drawDashedLine(y);
+
+      // History section
+      y += 20;
+      ctx.font = '13px "Courier New", Courier, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('History Pembayaran Utang:', padX, y);
+
+      y += 18;
+      ctx.fillText(receipt.historyDate || '02/11/2026', padX, y);
+      ctx.textAlign = 'right';
+      const paid = isLunas ? receipt.totalAmount : (receipt.paidAmount ?? 0);
+      ctx.fillText(`Rp ${formatAngkaIndo(paid)}`, rightPadX, y);
+
+      // Kasir Pintar / Play store footer
+      y += 20;
+      if (footerImg) {
+        const footW = 200;
+        const footH = (footerImg.height / footerImg.width) * footW;
+        ctx.drawImage(footerImg, (baseWidth - footW) / 2, y, footW, footH);
+      }
 
       // Convert to blob and download
       canvas.toBlob((blob) => {

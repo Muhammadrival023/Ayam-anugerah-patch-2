@@ -173,7 +173,26 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const unsubReceipt = onSnapshot(
         qReceipt,
         async (snapshot) => {
-          if (snapshot.empty) {
+          const list: AyamAnugrahReceipt[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data() as any;
+            list.push({
+              ...data,
+              id: d.id, // Primary key is always Firestore doc ID
+              docId: d.id,
+              firestoreDocId: d.id,
+              originalId: data.id || d.id,
+            } as AyamAnugrahReceipt);
+          });
+          list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          setReceipts(list);
+
+          // IMPORTANT: NEVER re-seed if the user has intentionally cleared or initialized the receipts!
+          const isInitialized = localStorage.getItem('ayamanugrah_receipts_initialized');
+          const isCleared = localStorage.getItem('ayamanugrah_receipts_cleared');
+
+          if (snapshot.empty && !isInitialized && !isCleared) {
+            localStorage.setItem('ayamanugrah_receipts_initialized', 'true');
             try {
               const batch = writeBatch(db);
               SAMPLE_AYAM_RECEIPTS.forEach((r) => {
@@ -185,15 +204,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
               });
               await batch.commit();
             } catch (err) {
-              console.warn('Seeding default receipts error:', err);
+              console.warn('Initial seeding error:', err);
             }
-          } else {
-            const list: AyamAnugrahReceipt[] = [];
-            snapshot.forEach((d) => {
-              list.push({ id: d.id, ...d.data() } as AyamAnugrahReceipt);
-            });
-            list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-            setReceipts(list);
           }
         },
         (error) => {
@@ -215,15 +227,22 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const savedBills = localStorage.getItem(LOCAL_STORAGE_BILL_KEY);
         const savedReceipts = localStorage.getItem(LOCAL_STORAGE_RECEIPT_KEY);
 
-        if (savedReceipts) {
+        if (savedReceipts !== null) {
           try {
             setReceipts(JSON.parse(savedReceipts));
           } catch {
-            setReceipts(SAMPLE_AYAM_RECEIPTS);
+            setReceipts([]);
           }
         } else {
-          setReceipts(SAMPLE_AYAM_RECEIPTS);
-          localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(SAMPLE_AYAM_RECEIPTS));
+          const isCleared = localStorage.getItem('ayamanugrah_receipts_cleared');
+          if (!isCleared) {
+            setReceipts(SAMPLE_AYAM_RECEIPTS);
+            localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(SAMPLE_AYAM_RECEIPTS));
+            localStorage.setItem('ayamanugrah_receipts_initialized', 'true');
+          } else {
+            setReceipts([]);
+            localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify([]));
+          }
         }
 
         if (savedCats) {
@@ -786,37 +805,43 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const clearAllFinancialData = async (scope: 'all' | 'transactions_only' | 'bills_only' = 'all'): Promise<void> => {
     setIsSyncing(true);
 
+    if (scope === 'all' || scope === 'transactions_only') {
+      setTransactions([]);
+      localStorage.setItem(LOCAL_STORAGE_TXN_KEY, JSON.stringify([]));
+      localStorage.setItem('ayamanugrah_txns_cleared', 'true');
+    }
+    if (scope === 'all' || scope === 'bills_only') {
+      setBills([]);
+      localStorage.setItem(LOCAL_STORAGE_BILL_KEY, JSON.stringify([]));
+      localStorage.setItem('ayamanugrah_bills_cleared', 'true');
+    }
+
     if (isCloudActive) {
       try {
-        const batch = writeBatch(db);
-
         if (scope === 'all' || scope === 'transactions_only') {
-          transactions.forEach((t) => {
-            batch.delete(doc(db, 'transactions', t.id));
-          });
+          const snapTxn = await getDocs(collection(db, 'transactions'));
+          if (!snapTxn.empty) {
+            const batch = writeBatch(db);
+            snapTxn.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+          }
         }
 
         if (scope === 'all' || scope === 'bills_only') {
-          bills.forEach((b) => {
-            batch.delete(doc(db, 'bills', b.id));
-          });
+          const snapBill = await getDocs(collection(db, 'bills'));
+          if (!snapBill.empty) {
+            const batch = writeBatch(db);
+            snapBill.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+          }
         }
 
-        await batch.commit();
         setIsSyncing(false);
       } catch (error) {
         setIsSyncing(false);
         handleFirestoreError(error, OperationType.DELETE, 'financial_data');
       }
     } else {
-      if (scope === 'all' || scope === 'transactions_only') {
-        setTransactions([]);
-        localStorage.removeItem(LOCAL_STORAGE_TXN_KEY);
-      }
-      if (scope === 'all' || scope === 'bills_only') {
-        setBills([]);
-        localStorage.removeItem(LOCAL_STORAGE_BILL_KEY);
-      }
       setIsSyncing(false);
     }
   };
@@ -830,6 +855,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createdAt: data.createdAt || new Date().toISOString(),
     };
 
+    localStorage.removeItem('ayamanugrah_receipts_cleared');
     if (isCloudActive) {
       try {
         const docRef = await addDoc(collection(db, 'receipts'), receiptToSave);
@@ -867,42 +893,155 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteReceipt = async (id: string): Promise<void> => {
     setIsSyncing(true);
+
+    // 1. Optimistic removal from state immediately
+    setReceipts((prev) => {
+      const remaining = prev.filter(
+        (r) =>
+          r.id !== id &&
+          (r as any).docId !== id &&
+          (r as any).firestoreDocId !== id &&
+          (r as any).originalId !== id &&
+          r.receiptNumber !== id
+      );
+      if (remaining.length === 0) {
+        localStorage.setItem('ayamanugrah_receipts_cleared', 'true');
+      }
+      return remaining;
+    });
+
+    // 2. Synchronize with localStorage
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_RECEIPT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const updated = parsed.filter(
+          (r: any) =>
+            r.id !== id &&
+            r.docId !== id &&
+            r.firestoreDocId !== id &&
+            r.originalId !== id &&
+            r.receiptNumber !== id
+        );
+        localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(updated));
+        if (updated.length === 0) {
+          localStorage.setItem('ayamanugrah_receipts_cleared', 'true');
+        }
+      }
+    } catch (e) {
+      console.warn('LocalStorage delete receipt error:', e);
+    }
+
+    // 3. Delete from Cloud Firestore
     if (isCloudActive) {
       try {
         await deleteDoc(doc(db, 'receipts', id));
-        setIsSyncing(false);
-      } catch (error) {
-        setIsSyncing(false);
-        handleFirestoreError(error, OperationType.DELETE, 'receipts');
+      } catch (err) {
+        console.warn('Direct deleteDoc failed for id, running fallback query:', err);
       }
+
+      // Fallback query in case the document had an internal id field matching id or receiptNumber
+      try {
+        const q1 = query(collection(db, 'receipts'), where('id', '==', id));
+        const snap1 = await getDocs(q1);
+        if (!snap1.empty) {
+          const b = writeBatch(db);
+          snap1.forEach((docItem) => b.delete(docItem.ref));
+          await b.commit();
+        }
+      } catch {
+        // ignore fallback errors
+      }
+
+      setIsSyncing(false);
     } else {
-      setReceipts((prev) => prev.filter((r) => r.id !== id));
       setIsSyncing(false);
     }
   };
 
   const deleteReceiptsBatch = async (ids: string[]): Promise<number> => {
+    if (ids.length === 0) return 0;
     setIsSyncing(true);
+
+    const idsSet = new Set(ids);
+    setReceipts((prev) => {
+      const remaining = prev.filter(
+        (r) =>
+          !idsSet.has(r.id) &&
+          !idsSet.has((r as any).docId) &&
+          !idsSet.has((r as any).firestoreDocId) &&
+          !idsSet.has((r as any).originalId) &&
+          !idsSet.has(r.receiptNumber)
+      );
+      if (remaining.length === 0) {
+        localStorage.setItem('ayamanugrah_receipts_cleared', 'true');
+      }
+      return remaining;
+    });
+
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_RECEIPT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const updated = parsed.filter(
+          (r: any) =>
+            !idsSet.has(r.id) &&
+            !idsSet.has(r.docId) &&
+            !idsSet.has(r.firestoreDocId) &&
+            !idsSet.has(r.originalId) &&
+            !idsSet.has(r.receiptNumber)
+        );
+        localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(updated));
+        if (updated.length === 0) {
+          localStorage.setItem('ayamanugrah_receipts_cleared', 'true');
+        }
+      }
+    } catch (e) {
+      console.warn('LocalStorage batch delete receipts error:', e);
+    }
+
     if (isCloudActive) {
       try {
         const batch = writeBatch(db);
         ids.forEach((id) => batch.delete(doc(db, 'receipts', id)));
         await batch.commit();
-        setIsSyncing(false);
-        return ids.length;
       } catch (error) {
-        setIsSyncing(false);
-        handleFirestoreError(error, OperationType.DELETE, 'receipts');
-        return 0;
+        console.warn('Batch delete directly failed, fallback:', error);
       }
+      setIsSyncing(false);
+      return ids.length;
     } else {
-      setReceipts((prev) => prev.filter((r) => !ids.includes(r.id)));
       setIsSyncing(false);
       return ids.length;
     }
   };
 
   const clearReceipts = async (type: 'all' | 'belum_lunas' | 'lunas' = 'all'): Promise<number> => {
+    setIsSyncing(true);
+
+    if (type === 'all') {
+      const count = receipts.length;
+      setReceipts([]);
+      localStorage.setItem('ayamanugrah_receipts_cleared', 'true');
+      localStorage.setItem('ayamanugrah_receipts_initialized', 'true');
+      localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify([]));
+
+      if (isCloudActive) {
+        try {
+          const snap = await getDocs(collection(db, 'receipts'));
+          if (!snap.empty) {
+            const batch = writeBatch(db);
+            snap.forEach((d) => batch.delete(d.ref));
+            await batch.commit();
+          }
+        } catch (err) {
+          console.warn('Firestore clear all receipts error:', err);
+        }
+      }
+      setIsSyncing(false);
+      return count;
+    }
+
     const toDelete = receipts.filter((r) => {
       if (type === 'belum_lunas') return r.status === 'BELUM LUNAS';
       if (type === 'lunas') return r.status === 'LUNAS';
@@ -913,10 +1052,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const restoreSampleReceipts = async (): Promise<void> => {
     setIsSyncing(true);
+    localStorage.removeItem('ayamanugrah_receipts_cleared');
+    localStorage.setItem('ayamanugrah_receipts_initialized', 'true');
+    localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(SAMPLE_AYAM_RECEIPTS));
+    setReceipts(SAMPLE_AYAM_RECEIPTS);
+
     if (isCloudActive) {
       try {
+        const snap = await getDocs(collection(db, 'receipts'));
         const batch = writeBatch(db);
-        receipts.forEach((r) => batch.delete(doc(db, 'receipts', r.id)));
+        snap.forEach((d) => batch.delete(d.ref));
         SAMPLE_AYAM_RECEIPTS.forEach((r) => {
           const newRef = doc(collection(db, 'receipts'));
           batch.set(newRef, { ...r, userId: currentUid });
@@ -928,8 +1073,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         handleFirestoreError(error, OperationType.WRITE, 'receipts');
       }
     } else {
-      setReceipts(SAMPLE_AYAM_RECEIPTS);
-      localStorage.setItem(LOCAL_STORAGE_RECEIPT_KEY, JSON.stringify(SAMPLE_AYAM_RECEIPTS));
       setIsSyncing(false);
     }
   };

@@ -99,12 +99,23 @@ export interface AyamAnugrahReceipt {
   id: string;
   userId: string;
   receiptNumber: string;
-  date: string; // e.g. '01 Nov 2026'
-  customerName: string; // e.g. 'Moris'
-  customerCode?: string; // e.g. '#09'
+  date: string; // e.g. '2026-11-02' or '01 Nov 2026'
+  time?: string; // e.g. '00:57:55'
+  customerName: string; // e.g. 'Ahmad'
+  customerCode?: string; // e.g. '70 e' or '#08'
   noteBox?: string; // e.g. 'Ket: Pita Putih'
   items: AyamReceiptLineItem[];
   totalAmount: number;
   status: 'BELUM LUNAS' | 'LUNAS';
+  paymentType?: string; // e.g. 'kredit' | 'tunai'
+  dueDate?: string; // e.g. '09/11/2026'
+  remainingDebt?: number; // Sisa utang
+  paidAmount?: number; // History pembayaran utang
+  historyDate?: string; // e.g. '02/11/2026'
+  storeHeaderName?: string; // 'aa anugrah'
+  storePhone?: string; // '085735144958'
+  storeHandle?: string; // '@@ anugrah'
   createdAt: string;
+  docId?: string;
+  firestoreDocId?: string;
 }
