@@ -38,7 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenExcelModal,
   onOpenClearModal,
 }) => {
-  const { user, isOnline, signInWithGoogle, signOut } = useAuth();
+  const { user, adminUser, isAuthenticated, isOnline, signOut } = useAuth();
   const { bills, isSyncing, summary, markBillAsPaid } = useFinance();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -95,7 +95,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
               <span>
-                {user ? 'Cloud Sync Aktif' : 'Lokal / Gudang Siap'}
+                {isAuthenticated ? 'Multi-Device Cloud Sync' : 'Lokal / Gudang Siap'}
               </span>
               {isSyncing && <RefreshCw className="w-3 h-3 animate-spin text-emerald-600 ml-0.5" />}
             </div>
@@ -280,12 +280,12 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* Auth / Account Profile */}
             <div className="relative" ref={userMenuRef}>
-              {user ? (
+              {isAuthenticated ? (
                 <button
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-gray-100 transition-colors"
                 >
-                  {user.photoURL ? (
+                  {user?.photoURL ? (
                     <img
                       src={user.photoURL}
                       alt={user.displayName || 'User'}
@@ -293,36 +293,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                     />
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
-                      {(user.displayName || user.email || 'U')[0].toUpperCase()}
+                      {adminUser ? 'A' : (user?.displayName || user?.email || 'U')[0].toUpperCase()}
                     </div>
                   )}
                   <span className="hidden sm:inline text-xs font-bold text-gray-700 max-w-[100px] truncate">
-                    {user.displayName?.split(' ')[0] || 'Akun'}
+                    {adminUser ? 'Admin' : (user?.displayName?.split(' ')[0] || 'Akun')}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
                 </button>
               ) : (
                 <button
-                  onClick={signInWithGoogle}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors"
-                  title="Sinkronisasi otomatis antar HP & Laptop via Google"
+                  onClick={() => signOut()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors"
+                  title="Masuk akun admin"
                 >
                   <LogIn className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Sinkronkan Akun</span>
+                  <span className="hidden sm:inline">Masuk Admin</span>
                 </button>
               )}
 
               {/* User dropdown menu */}
-              {isUserMenuOpen && user && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 z-50">
+              {isUserMenuOpen && isAuthenticated && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 p-4 z-50">
                   <div className="pb-3 border-b border-gray-100">
                     <div className="font-bold text-xs text-gray-900 truncate">
-                      {user.displayName || 'Pengguna FinTrack'}
+                      {adminUser?.displayName || user?.displayName || 'Administrator Gudang'}
                     </div>
-                    <div className="text-[11px] text-gray-400 truncate">{user.email}</div>
+                    <div className="text-[11px] text-gray-400 truncate">
+                      {adminUser ? 'Akun: admin (Hak Akses Penuh)' : user?.email}
+                    </div>
                     <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                       <ShieldCheck className="w-3 h-3" />
-                      <span>Tersambung Cloud Firestore</span>
+                      <span>Sinkronisasi Multi-Device Aktif</span>
                     </div>
                   </div>
 

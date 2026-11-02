@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
@@ -12,6 +12,7 @@ import { ExcelManager } from './components/ExcelManager';
 import { CategoryManager } from './components/CategoryManager';
 import { AyamReceiptGallery } from './components/AyamReceiptGallery';
 import { ClearDataModal } from './components/ClearDataModal';
+import { LoginDashboard } from './components/LoginDashboard';
 import { Transaction, TransactionType } from './types';
 import {
   FileSpreadsheet,
@@ -29,6 +30,7 @@ import {
 } from 'lucide-react';
 
 function MainApp() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { transactions, summary, restoreSampleData, loading } = useFinance();
 
   const [activeTab, setActiveTab] = useState<'receipts' | 'excel-table' | 'dashboard' | 'transactions' | 'bills'>('receipts');
@@ -42,6 +44,19 @@ function MainApp() {
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <p className="text-xs font-semibold text-gray-300">Memeriksa sesi login perangkat...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginDashboard />;
+  }
 
   const handleOpenAddModal = (type: TransactionType = 'income') => {
     setEditingTransaction(null);

@@ -69,7 +69,10 @@ const LOCAL_STORAGE_BILL_KEY = 'ayam_anugerah_bills_v2';
 const LOCAL_STORAGE_RECEIPT_KEY = 'ayam_anugerah_receipts_v1';
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, adminUser, isAuthenticated, loading: authLoading } = useAuth();
+
+  const isCloudActive = Boolean(user || isAuthenticated);
+  const currentUid = user ? user.uid : (adminUser ? 'admin_ayamanugerah' : 'guest');
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -83,8 +86,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (authLoading) return;
 
-    if (user) {
-      // Authenticated with Google Firebase -> Realtime listeners
+    if (isCloudActive) {
+      // Authenticated with Admin or Google Firebase -> Realtime listeners across devices
       setIsSyncing(true);
 
       const txnPath = 'transactions';
@@ -92,10 +95,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const billPath = 'bills';
       const receiptPath = 'receipts';
 
-      const qTxn = query(collection(db, txnPath), where('userId', '==', user.uid));
-      const qCat = query(collection(db, catPath), where('userId', '==', user.uid));
-      const qBill = query(collection(db, billPath), where('userId', '==', user.uid));
-      const qReceipt = query(collection(db, receiptPath), where('userId', '==', user.uid));
+      const qTxn = collection(db, txnPath);
+      const qCat = collection(db, catPath);
+      const qBill = collection(db, billPath);
+      const qReceipt = collection(db, receiptPath);
 
       // 1. Transactions Listener
       const unsubTxn = onSnapshot(
@@ -129,7 +132,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 const newCatRef = doc(collection(db, 'categories'));
                 batch.set(newCatRef, {
                   ...cat,
-                  userId: user.uid,
+                  userId: currentUid,
                   createdAt: new Date().toISOString(),
                 });
               });
@@ -177,7 +180,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 const newReceiptRef = doc(collection(db, 'receipts'));
                 batch.set(newReceiptRef, {
                   ...r,
-                  userId: user.uid,
+                  userId: currentUid,
                 });
               });
               await batch.commit();
@@ -434,11 +437,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createdAt: new Date().toISOString(),
     };
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const ref = await addDoc(collection(db, 'transactions'), {
           ...newTxn,
-          userId: user.uid,
+          userId: currentUid,
         });
         setIsSyncing(false);
         return ref.id;
@@ -466,7 +469,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const ref = doc(db, 'transactions', id);
         await updateDoc(ref, updateData);
@@ -485,7 +488,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteTransaction = async (id: string): Promise<void> => {
     setIsSyncing(true);
-    if (user) {
+    if (isCloudActive) {
       try {
         await deleteDoc(doc(db, 'transactions', id));
         setIsSyncing(false);
@@ -501,11 +504,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Category CRUD
   const addCategory = async (data: Omit<Category, 'id' | 'userId' | 'createdAt'>): Promise<string> => {
-    if (user) {
+    if (isCloudActive) {
       try {
         const ref = await addDoc(collection(db, 'categories'), {
           ...data,
-          userId: user.uid,
+          userId: currentUid,
           createdAt: new Date().toISOString(),
         });
         return ref.id;
@@ -526,7 +529,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updateCategory = async (id: string, data: Partial<Category>): Promise<void> => {
-    if (user) {
+    if (isCloudActive) {
       try {
         await updateDoc(doc(db, 'categories', id), data);
       } catch (error) {
@@ -540,7 +543,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const deleteCategory = async (id: string): Promise<void> => {
-    if (user) {
+    if (isCloudActive) {
       try {
         await deleteDoc(doc(db, 'categories', id));
       } catch (error) {
@@ -553,11 +556,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Bill CRUD
   const addBill = async (data: Omit<Bill, 'id' | 'userId' | 'createdAt'>): Promise<string> => {
-    if (user) {
+    if (isCloudActive) {
       try {
         const ref = await addDoc(collection(db, 'bills'), {
           ...data,
-          userId: user.uid,
+          userId: currentUid,
           createdAt: new Date().toISOString(),
         });
         return ref.id;
@@ -578,7 +581,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const updateBill = async (id: string, data: Partial<Bill>): Promise<void> => {
-    if (user) {
+    if (isCloudActive) {
       try {
         await updateDoc(doc(db, 'bills', id), {
           ...data,
@@ -595,7 +598,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const deleteBill = async (id: string): Promise<void> => {
-    if (user) {
+    if (isCloudActive) {
       try {
         await deleteDoc(doc(db, 'bills', id));
       } catch (error) {
@@ -638,7 +641,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsSyncing(true);
     let count = 0;
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const batch = writeBatch(db);
         newTxns.forEach((txn) => {
@@ -646,7 +649,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           batch.set(ref, {
             ...txn,
             receiptNumber: txn.receiptNumber || generateReceiptNumber(),
-            userId: user.uid,
+            userId: currentUid,
             createdAt: new Date().toISOString(),
           });
           count++;
@@ -747,7 +750,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (ids.length === 0) return 0;
     setIsSyncing(true);
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const batch = writeBatch(db);
         ids.forEach((id) => {
@@ -783,7 +786,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const clearAllFinancialData = async (scope: 'all' | 'transactions_only' | 'bills_only' = 'all'): Promise<void> => {
     setIsSyncing(true);
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const batch = writeBatch(db);
 
@@ -823,11 +826,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsSyncing(true);
     const receiptToSave = {
       ...data,
-      userId: user ? user.uid : 'guest',
+      userId: currentUid,
       createdAt: data.createdAt || new Date().toISOString(),
     };
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const docRef = await addDoc(collection(db, 'receipts'), receiptToSave);
         setIsSyncing(false);
@@ -846,7 +849,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateReceipt = async (id: string, data: Partial<AyamAnugrahReceipt>): Promise<void> => {
     setIsSyncing(true);
-    if (user) {
+    if (isCloudActive) {
       try {
         await updateDoc(doc(db, 'receipts', id), data);
         setIsSyncing(false);
@@ -864,7 +867,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteReceipt = async (id: string): Promise<void> => {
     setIsSyncing(true);
-    if (user) {
+    if (isCloudActive) {
       try {
         await deleteDoc(doc(db, 'receipts', id));
         setIsSyncing(false);
@@ -880,7 +883,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteReceiptsBatch = async (ids: string[]): Promise<number> => {
     setIsSyncing(true);
-    if (user) {
+    if (isCloudActive) {
       try {
         const batch = writeBatch(db);
         ids.forEach((id) => batch.delete(doc(db, 'receipts', id)));
@@ -910,13 +913,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const restoreSampleReceipts = async (): Promise<void> => {
     setIsSyncing(true);
-    if (user) {
+    if (isCloudActive) {
       try {
         const batch = writeBatch(db);
         receipts.forEach((r) => batch.delete(doc(db, 'receipts', r.id)));
         SAMPLE_AYAM_RECEIPTS.forEach((r) => {
           const newRef = doc(collection(db, 'receipts'));
-          batch.set(newRef, { ...r, userId: user.uid });
+          batch.set(newRef, { ...r, userId: currentUid });
         });
         await batch.commit();
         setIsSyncing(false);
@@ -940,11 +943,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const preparedReceipts = newReceipts.map((r, i) => ({
       ...r,
       id: r.id || `rcp_${Date.now()}_${i}`,
-      userId: user ? user.uid : 'guest',
+      userId: currentUid,
       createdAt: r.createdAt || new Date().toISOString(),
     }));
 
-    if (user) {
+    if (isCloudActive) {
       try {
         const batch = writeBatch(db);
         if (mode === 'replace') {
@@ -961,7 +964,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (r.status === 'BELUM LUNAS') {
               const billRef = doc(collection(db, 'bills'));
               batch.set(billRef, {
-                userId: user.uid,
+                userId: currentUid,
                 title: `Tagihan Gudang - ${r.customerName} (${r.customerCode || '#--'})`,
                 amount: r.totalAmount,
                 category: 'Pelunasan Tagihan Gudang',
@@ -975,7 +978,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             } else if (r.status === 'LUNAS') {
               const txnRef = doc(collection(db, 'transactions'));
               batch.set(txnRef, {
-                userId: user.uid,
+                userId: currentUid,
                 type: 'income',
                 amount: r.totalAmount,
                 category: 'Penjualan Ayam Gebrus',
